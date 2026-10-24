@@ -1,1 +1,9 @@
-[]
+[
+    {
+        "id": 1,
+        "description": "I want to go the market",
+        "status": "todo",
+        "createdAt": "2026-10-24T11:48:53",
+        "updatedAt": "2026-10-24T11:48:53"
+    }
+]

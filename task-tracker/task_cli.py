@@ -1,61 +1,190 @@
-import json, os, sys
+import json
+import sys
+from pathlib import Path
 from datetime import datetime
 
-FILE = "tasks.json"
+TASKS_FILE = Path("tasks.json")
 
-def load():
-    if not os.path.exists(FILE):
-        return []
-    with open(FILE) as f:
-        return json.load(f)
+def load_tasks():
+    if not TASKS_FILE.exists() or TASKS_FILE.stat().st_size == 0:
+        TASKS_FILE.write_text("[]")
 
-def save(tasks):
-    with open(FILE, "w") as f:
-        json.dump(tasks, f, indent=2)
+    try:
+        with TASKS_FILE.open("r") as file:
+            return json.load(file)
+    except json.JSONDecodeError:
+        print("Error: tasks.json is not valid JSON. Fix or delete it.")
+        sys.exit(1)
 
-def now():
-    return datetime.now().isoformat(timespec="seconds")
 
-def find(tasks, tid):
-    for t in tasks:
-        if t["id"] == tid:
-            return t
-    print("Task not found")
-    sys.exit(1)
+def add_task(description):
+    tasks = load_tasks()
+
+    if not description.strip():
+        print("Error: Task description cannot be empty.")
+        return
+
+    task_id = max((task["id"] for task in tasks), default=0) + 1
+    now = datetime.now().isoformat(timespec="seconds")
+
+    task = {
+        "id": task_id,
+        "description": description,
+        "status": "todo",
+        "createdAt": now,
+        "updatedAt": now
+    }
+
+    tasks.append(task)
+
+    with TASKS_FILE.open("w") as file:
+        json.dump(tasks, file, indent=4)
+
+    print(f"Task added successfully (ID: {task_id})")
+
+
+def list_tasks(status=None):
+    tasks = load_tasks()
+
+    if not tasks:
+        print("No tasks found.")
+        return
+
+    if status:
+        tasks = [task for task in tasks if task["status"] == status]
+
+    if not tasks:
+        print("No tasks found with that status.")
+        return
+
+    for task in tasks:
+        print(f'ID: {task["id"]}')
+        print(f'Description: {task["description"]}')
+        print(f'Status: {task["status"]}')
+        print(f'Created: {task["createdAt"]}')
+        print(f'Updated: {task["updatedAt"]}')
+        print("-" * 30)
+
+def update_task(task_id, new_description):
+    tasks = load_tasks()
+
+    if not new_description.strip():
+        print("Error: Task description cannot be empty.")
+        return
+
+    for task in tasks:
+        if task["id"] == task_id:
+            task["description"] = new_description
+            task["updatedAt"] = datetime.now().isoformat(timespec="seconds")
+
+            with TASKS_FILE.open("w") as file:
+                json.dump(tasks, file, indent=4)
+
+            print(f"Task {task_id} updated successfully.")
+            return
+
+    print(f"Error: Task {task_id} not found.")
+
+
+def delete_task(task_id):
+    tasks = load_tasks()
+
+    for task in tasks:
+        if task["id"] == task_id:
+            tasks.remove(task)
+
+            with TASKS_FILE.open("w") as file:
+                json.dump(tasks, file, indent=4)
+
+            print(f"Task {task_id} deleted successfully.")
+            return
+
+    print(f"Error: Task {task_id} not found.")
+
+
+def mark_task(task_id, status):
+    if status not in ("todo", "in-progress", "done"):
+        print("Error: Invalid task status.")
+        return
+
+    tasks = load_tasks()
+
+    for task in tasks:
+        if task["id"] == task_id:
+            task["status"] = status
+            task["updatedAt"] = datetime.now().isoformat(timespec="seconds")
+
+            with TASKS_FILE.open("w") as file:
+                json.dump(tasks, file, indent=4)
+
+            print(f"Task {task_id} marked as {status}.")
+            return
+
+    print(f"Error: Task {task_id} not found.")
 
 def main():
-    a = sys.argv[1:]
-    if not a:
-        print("Usage: add | update | delete | mark-in-progress | mark-done | list")
+    if len(sys.argv) < 2:
+        print("Usage: python3 task_cli.py <command>")
         return
-    cmd, tasks = a[0], load()
-    try:
-        if cmd == "add":
-            tid = max([t["id"] for t in tasks], default=0) + 1
-            tasks.append({"id": tid, "description": a[1], "status": "todo",
-                          "createdAt": now(), "updatedAt": now()})
-            print(f"Task added successfully (ID: {tid})")
-        elif cmd == "update":
-            t = find(tasks, int(a[1]))
-            t["description"], t["updatedAt"] = a[2], now()
-            print("Task updated")
-        elif cmd == "delete":
-            tasks.remove(find(tasks, int(a[1])))
-            print("Task deleted")
-        elif cmd in ("mark-in-progress", "mark-done"):
-            t = find(tasks, int(a[1]))
-            t["status"], t["updatedAt"] = cmd[5:], now()
-            print("Task marked as " + t["status"])
-        elif cmd == "list":
-            for t in tasks:
-                if len(a) == 1 or t["status"] == a[1]:
-                    print(f"[{t['id']}] {t['description']} - {t['status']}")
-        else:
-            print("Unknown command")
-            return
-    except (IndexError, ValueError):
-        print("Invalid arguments")
-        return
-    save(tasks)
 
-main()
+    command = sys.argv[1]
+
+    if command == "add":
+        if len(sys.argv) < 3:
+            print('Usage: python3 task_cli.py add "task description"')
+            return
+
+        description = " ".join(sys.argv[2:])
+        add_task(description)
+
+    elif command == "list":
+        status = sys.argv[2] if len(sys.argv) > 2 else None
+        list_tasks(status)
+
+    elif command == "update":
+        if len(sys.argv) < 4:
+            print('Usage: python3 task_cli.py update <id> "new description"')
+            return
+
+        try:
+            task_id = int(sys.argv[2])
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            return
+
+        description = " ".join(sys.argv[3:])
+        update_task(task_id, description)
+
+    elif command == "delete":
+        if len(sys.argv) != 3:
+            print("Usage: python3 task_cli.py delete <id>")
+            return
+
+        try:
+            task_id = int(sys.argv[2])
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            return
+
+        delete_task(task_id)
+
+    elif command in ("mark-in-progress", "mark-done"):
+        if len(sys.argv) != 3:
+            print(f"Usage: python3 task_cli.py {command} <id>")
+            return
+
+        try:
+            task_id = int(sys.argv[2])
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            return
+
+        status = "in-progress" if command == "mark-in-progress" else "done"
+        mark_task(task_id, status)
+
+    else:
+        print(f"Unknown command: {command}")
+
+
+if __name__ == "__main__":
+    main()
